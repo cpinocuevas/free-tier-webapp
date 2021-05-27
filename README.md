@@ -6,7 +6,7 @@ This CloudFormation template configures a two-tier VPC based on a set of input p
 
 The template will launch a VPC with 2 public subnets and 2 private subnets. The EC2 instance will be launch in public subnet 1 and the RDS instance will be launched in private subnet 2. They other 2 subnets can be further used if high availity is required.
 
-![VPC](2-tier.png)
+![VPC](2-tier.jgp)
 
 ## Features
 

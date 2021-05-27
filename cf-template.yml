@@ -1,0 +1,489 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Creates 2-tier network environment with 2 Availability Zones (AZs) and deploys a web app
+
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+      # Complex conditions trigger this warning.
+      - W1001
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: System Classification
+      Parameters:
+      - pOrg
+      - pSystem
+    - Label:
+        default: Overall VPC Configuration
+      Parameters:
+      - pVpcName
+      - pCidr
+    - Label:
+        default: Web Tier
+      Parameters:
+      - pTier1Name
+      - pTier1Subnet1Cidr
+      - pTier1Subnet2Cidr
+    - Label:
+        default: Database Tier
+      Parameters:
+      - pTier2Name
+      - pTier2Subnet1Cidr
+      - pTier2Subnet2Cidr
+    - Label:
+        default: Permissions Boundary
+      Parameters:    
+      - pPermissionsBoundaryArn
+    - Web Application:
+        default: Web App Parameters
+      Parameters:
+      - pKeyName
+      - pLatestAmiId
+      - pDBInstanceID
+      - pDatabaseName
+      - pMasterUsername
+      - pMasterPassword
+
+
+    ParameterLabels:
+      pVpcName:
+        default: VPC Name
+      pOrg:
+        default: Business Scope
+      pSystem:
+        default: System Identifier
+      pCidr:
+        default: VPC CIDR Block
+
+      pTier1Name:
+        default: Web Tier Name
+      pTier1Subnet1Cidr:
+        default: Web Tier AZ 1 - CIDR
+      pTier1Subnet2Cidr:
+        default: Web Tier AZ 2 - CIDR
+
+      pTier2Name:
+        default: DB Tier Name
+      pTier2Subnet1Cidr:
+        default: DB Tier AZ 1 - CIDR
+      pTier2Subnet2Cidr:
+        default: DB Tier AZ 2 - CIDR
+
+      pKeyName:
+        default: Key Pair of EC2 instance
+      pDBInstanceID:
+        default: Database Instance ID
+      pDatabaseName:
+        default: Database name
+      pMasterUsername:
+        default: Database master username
+      pMasterPassword:
+        default: Database master password
+      pLatestAmiId:
+        default: AMI
+
+Parameters:
+  pVpcName:
+    Type: String
+    Description: Name of the VPC and used to qualify names of associated resources
+    Default: dev
+
+  pOrg:
+    Type: String
+    Description: Used to qualify IAM resource names
+    Default: example
+
+  pSystem:
+    Type: String
+    Description: Used to qualify IAM role path
+    Default: infra
+
+  pCidr:
+    Type: String
+    Description: CIDR Format x.x.x.x/x
+    Default: 10.1.0.0/20
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    MinLength: 9
+    MaxLength: 18
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+
+  pTier1Name:
+    Type: String
+    Description: Web Tier Name
+    Default: public
+
+  pTier2Name:
+    Type: String
+    Description: DB Tier Name
+    Default: private
+
+  pTier1Subnet1Cidr:
+    Type: String
+    Description: Web Tier Subnet AZ 1
+    Default: 10.1.0.0/24
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    MinLength: 9
+    MaxLength: 18
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+
+  pTier1Subnet2Cidr:
+    Type: String
+    Description: Web Tier Subnet AZ 2
+    Default: 10.1.1.0/24
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    MinLength: 9
+    MaxLength: 18
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+
+  pTier2Subnet1Cidr:
+    Type: String
+    Description: DB Tier Subnet AZ 1
+    Default: 10.1.3.0/24
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    MinLength: 9
+    MaxLength: 18
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+
+  pTier2Subnet2Cidr:
+    Type: String
+    Description: DB Tier Subnet AZ 2
+    Default: 10.1.4.0/24
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    MinLength: 9
+    MaxLength: 18
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+
+  pPermissionsBoundaryArn:
+    Description: IAM Permissions Boundary ARN (optional)
+    Type: String
+    Default: ''
+
+  pKeyName: 
+    Description: Name of an existing EC2 KeyPair to enable SSH access
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+
+  pLatestAmiId:
+    Type : AWS::SSM::Parameter::Value<String>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-ebs
+
+  pDBInstanceID:
+    Default: rdsdb
+    Description: RDS DB instance
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: >-
+      Must begin with a letter and must not end with a hyphen or contain two
+      consecutive hyphens.
+  
+  pDatabaseName:
+    Default: mydb
+    Description: Database name
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
+  
+  pMasterUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
+  
+  pMasterPassword:
+    NoEcho: 'true'
+    Description: Password for MySQL database access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: Must contain only alphanumeric characters.
+
+Resources:
+
+  rVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref 'pCidr'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pVpcName}'
+
+#------------------------------------------------------------------------------
+# Intenet Gateway
+#------------------------------------------------------------------------------
+
+  rInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pVpcName}'
+
+  rInternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref 'rInternetGateway'
+      VpcId: !Ref 'rVpc'
+
+#------------------------------------------------------------------------------
+# Web Tier
+#------------------------------------------------------------------------------
+
+
+  rTier1Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select
+                    - 0
+                    - !GetAZs ''
+      CidrBlock: !Ref 'pTier1Subnet1Cidr'
+      VpcId: !Ref 'rVpc'
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pVpcName}-${pTier1Name}-1'
+
+  rTier1Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select
+                    - 1
+                    - !GetAZs ''
+      CidrBlock: !Ref 'pTier1Subnet2Cidr'
+      VpcId: !Ref 'rVpc'
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pVpcName}-${pTier1Name}-2'
+
+  rTier1RouteTable1:
+    Type: AWS::EC2::RouteTable
+    DependsOn: rInternetGatewayAttachment
+    Properties:
+      VpcId: !Ref 'rVpc'
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pVpcName}-${pTier1Name}-1'
+
+  rTier1RouteTable2:
+    Type: AWS::EC2::RouteTable
+    DependsOn: rInternetGatewayAttachment
+    Properties:
+      VpcId: !Ref 'rVpc'
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pVpcName}-${pTier1Name}-2'
+
+  rTier1IgwRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref 'rInternetGateway'
+      RouteTableId: !Ref 'rTier1RouteTable1'
+
+  rTier1IgwRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref 'rInternetGateway'
+      RouteTableId: !Ref 'rTier1RouteTable2'
+
+  rTier1Subnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'rTier1RouteTable1'
+      SubnetId: !Ref 'rTier1Subnet1'
+
+  rTier1Subnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'rTier1RouteTable2'
+      SubnetId: !Ref 'rTier1Subnet2'
+
+#------------------------------------------------------------------------------
+# DB Tier
+#------------------------------------------------------------------------------
+
+  rTier2Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select
+                    - 0
+                    - !GetAZs ''
+      CidrBlock: !Ref 'pTier2Subnet1Cidr'
+      VpcId: !Ref 'rVpc'
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pVpcName}-${pTier2Name}-1'
+
+  rTier2Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select
+                    - 1
+                    - !GetAZs ''
+      CidrBlock: !Ref 'pTier2Subnet2Cidr'
+      VpcId: !Ref 'rVpc'
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pVpcName}-${pTier2Name}-2'
+
+  #------------------------------------------------------------------------------
+  # Web App
+  #------------------------------------------------------------------------------
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      KeyName: !Ref pKeyName
+      ImageId: !Ref pLatestAmiId
+      Tags:
+        - Key: Name
+          Value: "Webserver"
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: !Ref 'rTier1Subnet1'
+          GroupSet:
+            - !Ref WebSecurityGroup
+
+      UserData:
+        Fn::Base64: |
+           #!/bin/bash
+           yum -y install httpd php mysql php-mysql
+
+           case $(ps -p 1 -o comm | tail -1) in
+           systemd) systemctl enable --now httpd ;;
+           init) chkconfig httpd on; service httpd start ;;
+           *) echo "Error starting httpd (OS not using init or systemd)." 2>&1
+           esac
+
+           if [ ! -f /var/www/html/bootcamp-app.tar.gz ]; then
+           cd /var/www/html
+           wget https://s3.amazonaws.com/immersionday-labs/bootcamp-app.tar
+           tar xvf bootcamp-app.tar
+           chown apache:root /var/www/html/rds.conf.php
+           fi
+           yum -y update
+
+  WebSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow SSH and HTTP connections to EC2 instance
+      VpcId: !Ref 'rVpc'
+      Tags:
+        - Key: Name
+          Value: "WebTier-sg"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow connections only from Webserver
+      VpcId: !Ref 'rVpc'
+      Tags:
+        - Key: Name
+          Value: "DBTier-sg"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !GetAtt WebSecurityGroup.GroupId
+
+  MyDB:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      DBInstanceIdentifier: !Ref pDBInstanceID
+      DBName: !Ref pDatabaseName
+      DBInstanceClass: db.t2.micro
+      AllocatedStorage: 20
+      Engine: MySQL
+      EngineVersion: 5.7.28
+      MasterUsername: !Ref pMasterUsername
+      MasterUserPassword: !Ref pMasterPassword
+      DBParameterGroupName: !Ref RDSParameterGroup
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      VPCSecurityGroups:
+        - Fn::GetAtt: [ DBSecurityGroup, GroupId ]
+
+  RDSParameterGroup:
+    Properties:
+      Description: "custom parameter group"
+      Family: mysql5.7
+      Parameters:
+        character_set_database: utf32
+      Tags:
+        - Key: Name
+          Value: "tut"
+    Type: "AWS::RDS::DBParameterGroup"
+
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: "Subnet Group"
+      DBSubnetGroupName: "RDSSubnetGroup"
+      SubnetIds: 
+          - !Ref 'rTier2Subnet1'
+          - !Ref 'rTier2Subnet2'
+
+Outputs:
+
+  oVpcId:
+    Description: VPC ID
+    Value: !Ref 'rVpc'
+    Export:
+      Name: !Sub '${AWS::StackName}::vpc-id'
+
+  oTier1Subnet1:
+    Description: Web Tier Subnet 1 ID
+    Value: !Ref 'rTier1Subnet1'
+    Export:
+      Name: !Sub '${AWS::StackName}::${pTier1Name}-subnet-id-1'
+
+  oTier1Subnet2:
+    Description: Web Tier Subnet 2 ID
+    Value: !Ref 'rTier1Subnet2'
+    Export:
+      Name: !Sub '${AWS::StackName}::${pTier1Name}-subnet-id-2'
+
+  oTier2Subnet1:
+    Description: DB Tier Subnet 1 ID
+    Value: !Ref 'rTier2Subnet1'
+    Export:
+      Name: !Sub '${AWS::StackName}::${pTier2Name}-subnet-id-1'
+
+  oTier2Subnet2:
+    Description: DB Tier Subnet 2 ID
+    Value: !Ref 'rTier2Subnet2'
+    Export:
+      Name: !Sub '${AWS::StackName}::${pTier2Name}-subnet-id-2'
+
+  oWebsiteURL:
+    Value: !Sub 'http://${EC2Instance.PublicDnsName}/'
+    Description: Webserver URL
+  
+  oRDSEndpoint:
+    Value: !GetAtt MyDB.Endpoint.Address
+    Description: RDS DB instance endpoint
